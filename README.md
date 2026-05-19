@@ -1,4 +1,3 @@
-```markdown
 # ADB-PAIR Tools
 
 Interface TUI (Text User Interface) avancée en Bash pour l'administration, le débogage et le contrôle d'appareils Android via l'Android Debug Bridge (ADB). Ce script automatise l'exécution de commandes complexes à travers un panneau console à triple colonne.
