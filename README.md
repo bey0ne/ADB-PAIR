@@ -53,6 +53,3 @@ adb-pair
  * **[1] USB → Wi-Fi auto :** Requiert l'interconnexion physique initiale. Le script ouvre le port TCP 5555 sur le démon adbd du téléphone, extrait l'adresse IP locale de l'appareil et valide la connexion sans fil. Le câble USB peut être déconnecté dès l'apparition du message de confirmation.
  * **[2] IP directe :** Établit la liaison directe via l'adresse de socket (IP:Port) fournie manuellement si le démon de la cible est déjà configuré en mode d'écoute réseau.
 L'interruption du processus et la fermeture du panneau s'exécutent par les commandes exit ou quit dans le prompt de saisie, ou par l'envoi du signal d'interruption standard Ctrl+C.
-```
-
-```
