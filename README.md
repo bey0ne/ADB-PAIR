@@ -2,7 +2,7 @@
 
 Interface TUI (Text User Interface) avancée en Bash pour l'administration, le débogage et le contrôle d'appareils Android via l'Android Debug Bridge (ADB). Ce script automatise l'exécution de commandes complexes à travers un panneau console à triple colonne.
 
-## ⚠️ Disclaimer!
+## ⚠️ Disclaimer !
 
 Ce logiciel est fourni "en l'état", sans aucune garantie d'aucune sorte. Les opérations via ADB impliquant des modifications du système de fichiers ou la gestion des paquets (désinstallation d'applications, nettoyage de répertoires système) comportent des risques de perte de données ou de dysfonctionnement logiciel du périphérique cible (brick). L'auteur décline toute responsabilité en cas de dommages matériels, logiciels ou de pertes d'informations induits par l'utilisation de cet outil. L'exécution de ce script relève de la seule responsabilité de l'opérateur.
 
