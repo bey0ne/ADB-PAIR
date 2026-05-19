@@ -3,7 +3,6 @@
 #couleurs
 NC='\033[0m'
 
-# Dégradé Logo (Rouge -> Blanc)
 C1='\033[38;5;196m'
 C2='\033[38;5;203m'
 C3='\033[38;5;210m'
