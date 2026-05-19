@@ -2,7 +2,7 @@
 
 Interface TUI (Text User Interface) avancée en Bash pour l'administration, le débogage et le contrôle d'appareils Android via l'Android Debug Bridge (ADB). Ce script automatise l'exécution de commandes complexes à travers un panneau console à triple colonne.
 
-## ⚠️ Avertissement (Disclaimer)
+## ⚠️ Disclaimer!
 
 Ce logiciel est fourni "en l'état", sans aucune garantie d'aucune sorte. Les opérations via ADB impliquant des modifications du système de fichiers ou la gestion des paquets (désinstallation d'applications, nettoyage de répertoires système) comportent des risques de perte de données ou de dysfonctionnement logiciel du périphérique cible (brick). L'auteur décline toute responsabilité en cas de dommages matériels, logiciels ou de pertes d'informations induits par l'utilisation de cet outil. L'exécution de ce script relève de la seule responsabilité de l'opérateur.
 
@@ -13,7 +13,7 @@ Ce logiciel est fourni "en l'état", sans aucune garantie d'aucune sorte. Les op
 * **Matrices Push/Pull (Options 21/22) :** Transferts de fichiers basés sur des tableaux de correspondances absolues statiques (`/sdcard/Download`, `/sdcard/DCIM`, `/data/local/tmp`) contournant la latence des balayages récursifs de l'OS Android.
 * **Outils d'extraction multimédia :** Captures d'écran directes via `exec-out screencap` et enregistrements vidéo temporels (`screenrecord`) avec rapatriement automatisé dans les sous-répertoires locaux `./screenshots` et `./videos`.
 
-## 🛠 Prérequis et Environnement
+## Prérequis et Environnement
 
 Le script a été développé, calibré et validé sur la distribution **Ubuntu** au sein de l'émulateur de terminal standard **GNOME Terminal**.
 
@@ -43,7 +43,7 @@ chmod +x install.sh
 sudo ./install.sh
 
 ```
-## 🚀 Utilisation
+## Utilisation
 L'outil étant enregistré globalement dans le $PATH, l'accès au panel s'exécute depuis n'importe quel emplacement du système via la commande :
 ```bash
 adb-pair
