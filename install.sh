@@ -11,9 +11,10 @@ if ! command -v apt-get &>/dev/null; then
    exit 1
 fi
 
-echo -e "\033[38;5;202m[*]\033[0m Mise à jour et installation des dépendances (adb, aapt)..."
+echo -e "\033[38;5;202m[*]\033[0m Mise à jour et installation des dépendances (adb, aapt, scrcpy)..."
 apt-get update -y
 apt-get install -y adb aapt || exit 1
+apt-get install -y scrcpy || echo -e "\033[38;5;208m[!]\033[0m scrcpy indisponible : l'option 27 (miroir) sera desactivee."
 
 # Chemin du script, indépendant du répertoire courant
 FILE_NAME="$(cd "$(dirname "$0")" && pwd)/adb-pair.sh"
