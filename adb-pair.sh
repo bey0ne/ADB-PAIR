@@ -74,6 +74,88 @@ lire_chemin() {
 # Etat exact d'un appareil dans 'adb devices' (device, unauthorized, offline...)
 etat_appareil() { adb devices | awk -v t="$1" 'NR>1 && $1==t {print $2}'; }
 
+# Historique des appareils Wi-Fi (10 derniers)
+HIST_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/adb-pair"
+HIST_FILE="${HIST_DIR}/appareils"
+TCPIP_OUVERT=0
+
+memoriser_appareil() {
+    [[ "$1" == *:* ]] || return 0
+    mkdir -p "${HIST_DIR}" 2>/dev/null || return 0
+    { echo "$1"; grep -vxF "$1" "${HIST_FILE}" 2>/dev/null; } | head -n 10 > "${HIST_FILE}.tmp" \
+        && mv "${HIST_FILE}.tmp" "${HIST_FILE}"
+}
+
+# Choix d'un appareil connecte ou recent ; definit TARGET
+choisir_appareil() {
+    local -a liste etats
+    local ligne i sel
+    while read -r ligne; do
+        liste+=("${ligne%% *}"); etats+=("${ligne#* }")
+    done < <(adb devices | awk 'NR>1 && NF>=2 {print $1" "$2}')
+    if [ -f "${HIST_FILE}" ]; then
+        while read -r ligne; do
+            [ -z "$ligne" ] && continue
+            [[ " ${liste[*]} " == *" ${ligne} "* ]] && continue
+            liste+=("$ligne"); etats+=("recent")
+        done < "${HIST_FILE}"
+    fi
+    if [ ${#liste[@]} -eq 0 ]; then
+        echo -e "  ${G4}[-] Aucun appareil connecte ni recent.${NC}"; return 1
+    fi
+    echo ""
+    for i in "${!liste[@]}"; do
+        printf "  ${WHITE}[%2d]${NC} %-28s ${LGRAY}%s${NC}\n" "$((i+1))" "${liste[$i]}" "${etats[$i]}"
+    done
+    printf "  ${G4}─►${NC} "
+    read -r sel
+    if ! [[ "$sel" =~ ^[0-9]+$ ]] || [ "$sel" -lt 1 ] || [ "$sel" -gt "${#liste[@]}" ]; then
+        return 1
+    fi
+    i=$((sel-1))
+    case "${etats[$i]}" in
+        device) TARGET="${liste[$i]}"
+                echo -e "  ${G5}[+]${NC} Cible : ${WHITE}${TARGET}${NC}" ;;
+        recent|offline) connecter "${liste[$i]}" ;;
+        *) echo -e "  ${G4}[-]${NC} Appareil ${etats[$i]} (autorisez-le sur le telephone)."; return 1 ;;
+    esac
+}
+
+# Repasse adbd en mode USB (ferme le port TCP 5555 sur le telephone)
+fermer_tcpip() {
+    if [[ "${TARGET}" != *:* ]]; then
+        echo -e "  ${G6}[!]${NC} La cible n'est pas en Wi-Fi."; return 1
+    fi
+    if adb -s "${TARGET}" usb > /dev/null 2>&1; then
+        echo -e "  ${G5}[+]${NC} Port reseau ferme. Reconnexion possible en USB."
+        adb disconnect "${TARGET}" > /dev/null 2>&1
+        TARGET=""; TCPIP_OUVERT=0
+    else
+        echo -e "  ${G4}[-] Echec de la fermeture.${NC}"; return 1
+    fi
+}
+
+# Sortie : propose de fermer le port 5555 ouvert par le script
+quitter() {
+    trap - INT
+    echo ""
+    if [ "${TCPIP_OUVERT}" -eq 1 ] && [ "$(etat_appareil "${TARGET}")" = "device" ]; then
+        printf "  ${G6}[!]${NC} Fermer le port 5555 du telephone avant de quitter ? [O/n] : "
+        read -r c
+        [[ "$c" =~ ^[nN]$ ]] || fermer_tcpip
+    fi
+    exit 0
+}
+
+# Execute une commande interruptible par Ctrl+C sans quitter le script
+sans_quitter() {
+    local rc
+    trap ':' INT
+    "$@"; rc=$?
+    trap quitter INT
+    return $rc
+}
+
 # Connexion Wi-Fi ; definit TARGET en cas de succes
 connecter() {
     local cible="$1" out
@@ -81,6 +163,7 @@ connecter() {
     out=$(timeout 15 adb connect "${cible}" 2>&1)
     if echo "${out}" | grep -qi "connected\|already"; then
         TARGET="${cible}"
+        memoriser_appareil "${TARGET}"
         echo -e "  ${G5}[+]${NC} Connecte : ${WHITE}${TARGET}${NC}"
         return 0
     fi
@@ -145,21 +228,41 @@ afficher_banniere() {
 }
 
 # Menu principal
+# Cellule de colonne : <largeur> <dernier(0/1)> "NN Libelle"
+cellule() {
+    local larg="$1" dernier="$2" num="${3%% *}" lib="${3#* }" br="├─"
+    [ "$dernier" -eq 1 ] && br="└─"
+    printf "${G4}%s${NC} ${G4}[${WHITE}%s${G4}]${NC} ${WHITE}%-*s${NC}" "$br" "$num" "$((larg-8))" "$lib"
+}
+
+ligne_haut() {
+    printf "${G4}%s${NC} ${G4}[${WHITE}%s${G4}]${NC} ${WHITE}%-55s${NC}${G4}[${WHITE}%s${G4}]${NC} ${WHITE}%-8s${NC} ${G4}%s${NC}\n" "$@"
+}
+
 afficher_menu() {
+    local -a c1=("01 Changer Cible" "02 Reinit TCP/IP" "03 List Devices" "04 Reboot Sys"
+                 "05 Reboot Recov" "06 Status Tunnel" "07 Pair (A11+)" "08 Choisir Appareil"
+                 "09 Fermer Port 5555")
+    local -a c2=("11 Inject APK" "12 Inject+Exec" "13 Gerer Apps" "14 Clear Data"
+                 "15 List Apps" "16 Force Stop" "17 Backup APK" "18 Logcat App")
+    local -a c3=("21 Push File" "22 Pull File" "23 Screenshot" "24 Screenrecord"
+                 "25 Logcat Dump" "26 Dumpsys" "27 Miroir scrcpy")
+    local i n=${#c1[@]}
+
     echo -e "                                 ${WHITE}ADB-PAIR-Tools ${LGRAY}v${VERSION}${NC}\n"
-    
-    echo -e "${G4}┌─${NC} ${G4}[${WHITE}I${G4}]${NC} ${WHITE}Info${NC}                                                   ${G4}[${WHITE}31${G4}]${NC} ${WHITE}Open URL${NC} ${G4}─┐${NC}"
-    echo -e "${G4}├─${NC} ${G4}[${WHITE}S${G4}]${NC} ${WHITE}Status${NC}                                                 ${G4}[${WHITE}32${G4}]${NC} ${WHITE}Shell   ${NC} ${G4}─┤${NC}"
+    ligne_haut "┌─" "I" "Info"    "31" "Open URL" "─┐"
+    ligne_haut "├─" "S" "Status"  "32" "Shell"    "─┤"
+    ligne_haut "├─" "Q" "Quitter" "33" "Clavier"  "─┤"
     echo -e "${G4}│${NC}                                                                            ${G4}│${NC}"
     echo -e "${G4}├───[${NC} ${WHITE}Device & Network${NC} ${G4}]───┬───[${NC} ${WHITE}App Management${NC} ${G4}]───┬───[${NC} ${WHITE}File & System${NC} ${G4}]────┘${NC}"
     echo -e "${G4}│${NC}                          ${G4}│${NC}                        ${G4}│${NC}"
-    echo -e "${G4}├─${NC} ${G4}[${WHITE}01${G4}]${NC} ${WHITE}Changer Cible      ${G4}├─${NC} ${G4}[${WHITE}11${G4}]${NC} ${WHITE}Inject APK       ${G4}├─${NC} ${G4}[${WHITE}21${G4}]${NC} ${WHITE}Push File${NC}"
-    echo -e "${G4}├─${NC} ${G4}[${WHITE}02${G4}]${NC} ${WHITE}Reinit TCP/IP      ${G4}├─${NC} ${G4}[${WHITE}12${G4}]${NC} ${WHITE}Inject+Exec      ${G4}├─${NC} ${G4}[${WHITE}22${G4}]${NC} ${WHITE}Pull File${NC}"
-    echo -e "${G4}├─${NC} ${G4}[${WHITE}03${G4}]${NC} ${WHITE}List Devices       ${G4}├─${NC} ${G4}[${WHITE}13${G4}]${NC} ${WHITE}Gerer Apps       ${G4}├─${NC} ${G4}[${WHITE}23${G4}]${NC} ${WHITE}Screenshot${NC}"
-    echo -e "${G4}├─${NC} ${G4}[${WHITE}04${G4}]${NC} ${WHITE}Reboot Sys         ${G4}├─${NC} ${G4}[${WHITE}14${G4}]${NC} ${WHITE}Clear Data       ${G4}├─${NC} ${G4}[${WHITE}24${G4}]${NC} ${WHITE}Screenrecord${NC}"
-    echo -e "${G4}├─${NC} ${G4}[${WHITE}05${G4}]${NC} ${WHITE}Reboot Recov       ${G4}├─${NC} ${G4}[${WHITE}15${G4}]${NC} ${WHITE}List Apps        ${G4}├─${NC} ${G4}[${WHITE}25${G4}]${NC} ${WHITE}Logcat Dump${NC}"
-    echo -e "${G4}├─${NC} ${G4}[${WHITE}06${G4}]${NC} ${WHITE}Status Tunnel      ${G4}└─${NC} ${G4}[${WHITE}16${G4}]${NC} ${WHITE}Force Stop       ${G4}└─${NC} ${G4}[${WHITE}26${G4}]${NC} ${WHITE}Dumpsys${NC}"
-    echo -e "${G4}└─${NC} ${G4}[${WHITE}07${G4}]${NC} ${WHITE}Pair (Android 11+)${NC}"
+    for ((i=0; i<n; i++)); do
+        cellule 27 $((i==n-1)) "${c1[$i]}"
+        if ((i < ${#c2[@]})); then cellule 25 $((i==${#c2[@]}-1)) "${c2[$i]}"
+        else printf "%25s" ""; fi
+        ((i < ${#c3[@]})) && cellule 20 $((i==${#c3[@]}-1)) "${c3[$i]}"
+        echo ""
+    done
     echo ""
 }
 
@@ -336,6 +439,7 @@ if [ -n "$CIBLE_ARG" ]; then
     MODE_CONN="arg"
 else
     echo -e "  ${WHITE}[1]${NC} USB → Wi-Fi auto   ${WHITE}[2]${NC} IP directe   ${WHITE}[3]${NC} Appairage (Android 11+)"
+    [ -s "${HIST_FILE}" ] && echo -e "  ${WHITE}[4]${NC} Appareils recents"
     printf "  ${G4}─►${NC} "
     read -r MODE_CONN
 fi
@@ -348,6 +452,8 @@ elif [ "$MODE_CONN" = "2" ]; then
     connecter "${IP_D}" || exit 1
 elif [ "$MODE_CONN" = "3" ]; then
     appairer_wifi || exit 1
+elif [ "$MODE_CONN" = "4" ]; then
+    choisir_appareil || exit 1
 else
     echo -e "  ${G5}[*]${NC} Branchez l'USB et autorisez le debogage..."
     while true; do
@@ -399,7 +505,8 @@ else
         fi
 
         if [ "$CONNECTED" -eq 1 ]; then
-            TARGET="${IP_C}:5555"
+            TARGET="${IP_C}:5555"; TCPIP_OUVERT=1
+            memoriser_appareil "${TARGET}"
             echo -e "  ${G5}[+]${NC} ${WHITE}Liaison Wi-Fi etablie.${NC} Cable USB debrayable."
         else
             echo -e "  ${G4}[-]${NC} Wi-Fi inaccessible ou non autorise."
@@ -415,6 +522,7 @@ fi
 [ "$MODE_CONN" != "arg" ] && read -rp $'\n  [*] Entree pour acceder au panel...'
 
 # Boucles principale
+trap quitter INT
 while true; do
     afficher_banniere
     afficher_menu
@@ -425,7 +533,7 @@ while true; do
     [[ "$choix" =~ ^[1-9]$ ]] && choix="0${choix}"
 
     case $choix in
-        exit|quit) exit 0 ;;
+        q|Q|exit|quit) quitter ;;
 
         01)
             printf "  Cible : "; read -r it
@@ -439,7 +547,7 @@ while true; do
                     adb -s "${TARGET}" tcpip 5555 > /dev/null 2>&1
                     sleep 3
                     timeout 8 adb connect "${IP_ONLY}:5555" > /dev/null 2>&1
-                    TARGET="${IP_ONLY}:5555"
+                    TARGET="${IP_ONLY}:5555"; TCPIP_OUVERT=1
                 else
                     adb -s "${TARGET}" tcpip 5555 > /dev/null 2>&1
                 fi
@@ -459,6 +567,12 @@ while true; do
                 adb devices -l | awk -v t="${TARGET}" '$1==t'; read -rp "  Entree..."
             fi ;;
         07) appairer_wifi; read -rp "  Entree..." ;;
+        08) choisir_appareil; sleep 1 ;;
+        09) if check_target; then
+                printf "  ${G6}[!]${NC} Fermer le port reseau (la connexion Wi-Fi sera coupee) ? [o/N] : "
+                read -r c; [[ "$c" =~ ^[oO]$ ]] && fermer_tcpip
+                sleep 1
+            fi ;;
 
         11) if check_target; then
                 printf "  APK : "; ap=$(lire_chemin)
