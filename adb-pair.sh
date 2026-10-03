@@ -266,8 +266,41 @@ afficher_menu() {
     echo ""
 }
 
+# Sauvegarde des APK d'une application (gere les split APK) dans ./apks/<package>/
+sauver_apk() {
+    local pkg="$1" dest="./apks/$1" chemin n=0
+    local -a chemins
+    mapfile -t chemins < <(adb -s "${TARGET}" shell pm path "$(shq "$pkg")" 2>/dev/null \
+        | sed 's/^package://' | tr -d '\r')
+    if [ ${#chemins[@]} -eq 0 ] || [ -z "${chemins[0]}" ]; then
+        echo -e "  ${G4}[-] Package introuvable : ${pkg}${NC}"; return 1
+    fi
+    mkdir -p "$dest"
+    for chemin in "${chemins[@]}"; do
+        adb -s "${TARGET}" pull "$chemin" "$dest/" > /dev/null 2>&1 && n=$((n+1))
+    done
+    if [ "$n" -eq ${#chemins[@]} ]; then
+        echo -e "  ${G5}[+]${NC} ${n} APK sauvegarde(s) : ${WHITE}${dest}/${NC}"
+    else
+        echo -e "  ${G4}[-] ${n}/${#chemins[@]} APK recupere(s) dans ${dest}/${NC}"; return 1
+    fi
+}
+
+# Logcat en direct d'une application (Ctrl+C pour revenir au menu)
+logcat_app() {
+    local pkg="$1" pid
+    pid=$(adb -s "${TARGET}" shell pidof -s "$(shq "$pkg")" 2>/dev/null | tr -d '\r')
+    if [ -z "$pid" ]; then
+        echo -e "  ${G4}[-] ${pkg} n'est pas en cours d'execution.${NC}"; return 1
+    fi
+    echo -e "  ${G5}[*]${NC} Logcat de ${WHITE}${pkg}${NC} (PID ${pid}) — ${LGRAY}Ctrl+C pour arreter${NC}"
+    sans_quitter adb -s "${TARGET}" logcat --pid="$pid"
+    echo ""
+}
+
 # Menu Apps
 menu_apps() {
+    local filtre=""
     while true; do
         afficher_banniere
         echo -e "${G4}  ▼ App Management — Applications de l'appareil${NC}\n"
@@ -275,13 +308,18 @@ menu_apps() {
 
         mapfile -t APPS < <(
             adb -s "${TARGET}" shell pm list packages -3 2>/dev/null \
-            | sed 's/package://' | sort | tr -d '\r'
+            | sed 's/package://' | sort | tr -d '\r' | grep -iF -- "${filtre}"
         )
 
         if [ ${#APPS[@]} -eq 0 ]; then
+            if [ -n "$filtre" ]; then
+                echo -e "  ${G4}[-] Aucune application ne contient '${filtre}'.${NC}"
+                filtre=""; sleep 1; continue
+            fi
             echo -e "  ${G4}[-] Aucune application tierce trouvee.${NC}"
             read -rp "  Entree..."; return
         fi
+        [ -n "$filtre" ] && echo -e "  ${LGRAY}Filtre : ${filtre}${NC}"
 
         echo -e "  ${G4}┌────────────────────────────────────────────────────────┐${NC}"
         for i in "${!APPS[@]}"; do
@@ -290,10 +328,13 @@ menu_apps() {
         done
         printf "  ${G4}│${NC} ${WHITE}[%2s]${NC} %-51s ${G4}│${NC}\n" "0" "Retour"
         echo -e "  ${G4}└────────────────────────────────────────────────────────┘${NC}"
+        echo -e "  ${LGRAY}/texte = filtrer   * = tout afficher${NC}"
 
         printf "  ${G4}─►${NC} "
         read -r sel
         [ "$sel" == "0" ] || [ "$sel" == "b" ] && return
+        if [[ "$sel" == /* ]]; then filtre="${sel#/}"; continue; fi
+        if [ "$sel" == "*" ]; then filtre=""; continue; fi
         if ! [[ "$sel" =~ ^[0-9]+$ ]] || \
             [ "$sel" -lt 1 ] || [ "$sel" -gt "${#APPS[@]}" ]; then
             continue
@@ -309,6 +350,8 @@ menu_apps() {
             echo -e "${G4}  │${NC} ${WHITE}[3]${NC} Forcer l'arret            ${G4}│${NC}"
             echo -e "${G4}  │${NC} ${WHITE}[4]${NC} Infos detaillees          ${G4}│${NC}"
             echo -e "${G4}  │${NC} ${WHITE}[5]${NC} Lancer l'application      ${G4}│${NC}"
+            echo -e "${G4}  │${NC} ${WHITE}[6]${NC} Sauvegarder l'APK         ${G4}│${NC}"
+            echo -e "${G4}  │${NC} ${WHITE}[7]${NC} Logcat en direct          ${G4}│${NC}"
             echo -e "${G4}  │${NC} ${WHITE}[0]${NC} Retour a la liste         ${G4}│${NC}"
             echo -e "${G4}  └──────────────────────────────┘${NC}"
             printf "  ${G4}─►${NC} "
@@ -329,6 +372,8 @@ menu_apps() {
                 5) adb -s "${TARGET}" shell monkey -p "${PKG}" \
                        -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
                    echo -e "  ${G5}[+]${NC} Lance." ;;
+                6) sauver_apk "${PKG}" ;;
+                7) logcat_app "${PKG}" ;;
                 0|b|"") break ;;
                 *) echo -e "  ${G4}[?]${NC} Choix invalide." ;;
             esac
@@ -617,6 +662,17 @@ while true; do
                 [ -z "$p" ] || [ "$p" == "b" ] && continue
                 adb -s "${TARGET}" shell am force-stop "$(shq "$p")"
                 echo -e "  ${G5}[+]${NC} Arrete."; sleep 1
+            fi ;;
+
+        17) if check_target; then
+                printf "  Package : "; read -r p
+                [ -z "$p" ] || [ "$p" == "b" ] && continue
+                sauver_apk "$p"; read -rp "  Entree..."
+            fi ;;
+        18) if check_target; then
+                printf "  Package : "; read -r p
+                [ -z "$p" ] || [ "$p" == "b" ] && continue
+                logcat_app "$p"; read -rp "  Entree..."
             fi ;;
 
         21) if check_target; then menu_push; fi ;;
