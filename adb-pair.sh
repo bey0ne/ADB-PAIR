@@ -382,6 +382,51 @@ menu_apps() {
     done
 }
 
+# Menu Clavier / touches
+menu_clavier() {
+    local sel t
+    while true; do
+        afficher_banniere
+        echo -e "${G4}  ⌨ Clavier — Saisie et touches${NC}\n"
+        echo -e "  ${G4}┌──────────────────────────────┐${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[1]${NC} Envoyer du texte          ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[2]${NC} Accueil                   ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[3]${NC} Retour                    ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[4]${NC} Applications recentes     ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[5]${NC} Bouton marche (ecran)     ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[6]${NC} Volume +                  ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[7]${NC} Volume -                  ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[8]${NC} Entree                    ${G4}│${NC}"
+        echo -e "  ${G4}│${NC} ${WHITE}[0]${NC} Retour au menu            ${G4}│${NC}"
+        echo -e "  ${G4}└──────────────────────────────┘${NC}"
+        printf "  ${G4}─►${NC} "
+        read -r sel
+        case $sel in
+            1) printf "  Texte : "; read -r t
+               [ -z "$t" ] && continue
+               adb -s "${TARGET}" shell input text "$(shq "${t// /%s}")" ;;
+            2) adb -s "${TARGET}" shell input keyevent KEYCODE_HOME ;;
+            3) adb -s "${TARGET}" shell input keyevent KEYCODE_BACK ;;
+            4) adb -s "${TARGET}" shell input keyevent KEYCODE_APP_SWITCH ;;
+            5) adb -s "${TARGET}" shell input keyevent KEYCODE_POWER ;;
+            6) adb -s "${TARGET}" shell input keyevent KEYCODE_VOLUME_UP ;;
+            7) adb -s "${TARGET}" shell input keyevent KEYCODE_VOLUME_DOWN ;;
+            8) adb -s "${TARGET}" shell input keyevent KEYCODE_ENTER ;;
+            0|b) return ;;
+        esac
+    done
+}
+
+# Miroir d'ecran via scrcpy (lance en arriere-plan)
+lancer_miroir() {
+    if ! command -v scrcpy &>/dev/null; then
+        echo -e "  ${G4}[-] scrcpy manquant (sudo apt install scrcpy).${NC}"; return 1
+    fi
+    scrcpy -s "${TARGET}" > /dev/null 2>&1 &
+    disown
+    echo -e "  ${G5}[+]${NC} Miroir lance dans une fenetre separee."
+}
+
 # Menu Push
 menu_push() {
     while true; do
@@ -696,8 +741,10 @@ while true; do
                     echo -e "  ${G4}[-] Duree invalide (1 a 180 s).${NC}"; sleep 1; continue
                 fi
                 TS=$(date +%s); OUT="./videos/rec_${TS}.mp4"
-                echo -e "  ${G5}[*]${NC} Enregistrement (${rt}s)..."
-                adb -s "${TARGET}" shell screenrecord --time-limit "$rt" /sdcard/v_tmp.mp4
+                echo -e "  ${G5}[*]${NC} Enregistrement (${rt}s)... ${LGRAY}Ctrl+C pour arreter avant${NC}"
+                if ! sans_quitter adb -s "${TARGET}" shell screenrecord --time-limit "$rt" /sdcard/v_tmp.mp4; then
+                    echo ""; sleep 2   # laisse le telephone finaliser le fichier
+                fi
                 if adb -s "${TARGET}" pull /sdcard/v_tmp.mp4 "$OUT" > /dev/null 2>&1; then
                     echo -e "  ${G5}[+]${NC} ${WHITE}${OUT}${NC}"
                 else
@@ -717,6 +764,7 @@ while true; do
                 adb -s "${TARGET}" shell dumpsys "$(shq "$svc")" | head -60
                 read -rp "  Entree..."
             fi ;;
+        27) if check_target; then lancer_miroir; sleep 1; fi ;;
 
         31) if check_target; then
                 printf "  URL : "; read -r u
@@ -725,6 +773,7 @@ while true; do
                     am start -a android.intent.action.VIEW -d "$(shq "$u")"
             fi ;;
         32) if check_target; then adb -s "${TARGET}" shell; fi ;;
+        33) if check_target; then menu_clavier; fi ;;
 
         i|I) if check_target; then
                 echo ""
@@ -739,6 +788,16 @@ while true; do
                 printf "  ${LGRAY}%-13s${NC}: %s\n" "IP Wi-Fi" \
                     "$(adb -s "${TARGET}" shell ip addr show wlan0 2>/dev/null \
                     | grep -oE 'inet [0-9.]+' | awk '{print $2}' | tr -d '\r')"
+                printf "  ${LGRAY}%-13s${NC}: %s\n" "Batterie" \
+                    "$(adb -s "${TARGET}" shell dumpsys battery 2>/dev/null \
+                    | awk -F': ' '/^ *level:/{l=$2} /^ *AC powered: true|^ *USB powered: true/{c=" (en charge)"} END{if(l!="") print l"%"c}' \
+                    | tr -d '\r')"
+                printf "  ${LGRAY}%-13s${NC}: %s\n" "Stockage" \
+                    "$(adb -s "${TARGET}" shell df -h /data 2>/dev/null \
+                    | awk 'NR==2{print $4" libres sur "$2}' | tr -d '\r')"
+                ROOT="non"
+                adb -s "${TARGET}" shell 'command -v su' 2>/dev/null | grep -q su && ROOT="oui (su present)"
+                printf "  ${LGRAY}%-13s${NC}: %s\n" "Root" "$ROOT"
                 read -rp "  Entree..."
             fi ;;
         s|S) adb devices -l; read -rp "  Entree..." ;;
