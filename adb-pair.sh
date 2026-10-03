@@ -21,7 +21,31 @@ GRAY='\033[38;5;240m'
 LGRAY='\033[38;5;245m'
 WHITE='\033[38;5;255m'
 
+VERSION="2.0.0"
 TARGET=""
+
+# Options de ligne de commande
+afficher_aide() {
+    cat <<AIDE
+ADB-PAIR-Tools v${VERSION}
+
+Usage : adb-pair [OPTION] [IP[:PORT]]
+
+  IP[:PORT]       Connexion directe a l'appareil (port 5555 par defaut)
+  -h, --help      Afficher cette aide
+  -v, --version   Afficher la version
+
+Sans argument, la sequence d'initialisation interactive est lancee.
+AIDE
+}
+
+CIBLE_ARG=""
+case "${1:-}" in
+    -h|--help) afficher_aide; exit 0 ;;
+    -v|--version) echo "adb-pair ${VERSION}"; exit 0 ;;
+    -*) echo "Option inconnue : $1 (voir --help)"; exit 1 ;;
+    *) CIBLE_ARG="${1:-}" ;;
+esac
 
 # Prerequis
 if ((BASH_VERSINFO[0] < 4)); then
@@ -122,7 +146,7 @@ afficher_banniere() {
 
 # Menu principal
 afficher_menu() {
-    echo -e "                                 ${WHITE}ADB-PAIR-Tools${NC}\n"
+    echo -e "                                 ${WHITE}ADB-PAIR-Tools ${LGRAY}v${VERSION}${NC}\n"
     
     echo -e "${G4}┌─${NC} ${G4}[${WHITE}I${G4}]${NC} ${WHITE}Info${NC}                                                   ${G4}[${WHITE}31${G4}]${NC} ${WHITE}Open URL${NC} ${G4}─┐${NC}"
     echo -e "${G4}├─${NC} ${G4}[${WHITE}S${G4}]${NC} ${WHITE}Status${NC}                                                 ${G4}[${WHITE}32${G4}]${NC} ${WHITE}Shell   ${NC} ${G4}─┤${NC}"
@@ -308,11 +332,17 @@ afficher_banniere
 printf "${G4}  ═══ SEQUENCE D INITIALISATION ═══${NC}\n\n"
 adb disconnect > /dev/null 2>&1
 
-echo -e "  ${WHITE}[1]${NC} USB → Wi-Fi auto   ${WHITE}[2]${NC} IP directe   ${WHITE}[3]${NC} Appairage (Android 11+)"
-printf "  ${G4}─►${NC} "
-read -r MODE_CONN
+if [ -n "$CIBLE_ARG" ]; then
+    MODE_CONN="arg"
+else
+    echo -e "  ${WHITE}[1]${NC} USB → Wi-Fi auto   ${WHITE}[2]${NC} IP directe   ${WHITE}[3]${NC} Appairage (Android 11+)"
+    printf "  ${G4}─►${NC} "
+    read -r MODE_CONN
+fi
 
-if [ "$MODE_CONN" = "2" ]; then
+if [ "$MODE_CONN" = "arg" ]; then
+    connecter "${CIBLE_ARG}" || exit 1
+elif [ "$MODE_CONN" = "2" ]; then
     printf "  ${G5}[*]${NC} IP (ex: 192.168.1.10:5555) : "
     read -r IP_D
     connecter "${IP_D}" || exit 1
@@ -382,7 +412,7 @@ else
     fi
 fi
 
-read -rp $'\n  [*] Entree pour acceder au panel...'
+[ "$MODE_CONN" != "arg" ] && read -rp $'\n  [*] Entree pour acceder au panel...'
 
 # Boucles principale
 while true; do
