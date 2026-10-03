@@ -8,7 +8,8 @@ Ce logiciel est fourni "en l'état", sans aucune garantie d'aucune sorte. Les op
 
 ## ⚙️ Fonctionnalités
 
-* **Initialisation réseau sécurisée :** Séquence d'interrogation des interfaces (`ap0`, `wlan1`, `wlan0`) pour le basculement TCP/IP automatique (sans fil). Intègre un mécanisme de vérification de connectivité par boucles itératives avec un délai d'attente maximum (`timeout`) de 30 secondes pour interdire le blocage du shell hôte. Maintien automatique du mode USB strict en cas d'échec de routage local.
+* **Initialisation réseau sécurisée :** Séquence d'interrogation des interfaces (`ap0`, `wlan1`, `wlan0`) pour le basculement TCP/IP automatique (sans fil). Intègre un mécanisme de vérification de connectivité par tentatives successives bornées par `timeout` pour éviter le blocage du shell hôte. Maintien automatique du mode USB strict en cas d'échec de routage local.
+* **Appairage sans fil Android 11+ (mode [3] / option 07) :** Association via `adb pair` avec le code affiché dans *Options développeur > Débogage sans fil*, sans câble USB.
 * **Gestion dynamique des applications (Option 13) :** Interrogation en temps réel de la couche de gestion des paquets Android (`pm list packages -3`) pour extraire exclusivement les applications tierces. Permet l'arrêt forcé, la purge des données applicatives, la désinstallation ou le lancement via sélection numérique avec traitement automatique par troncature (limite à 51 caractères) pour préserver l'intégrité visuelle du menu.
 * **Matrices Push/Pull (Options 21/22) :** Transferts de fichiers basés sur des tableaux de correspondances absolues statiques (`/sdcard/Download`, `/sdcard/DCIM`, `/data/local/tmp`) contournant la latence des balayages récursifs de l'OS Android.
 * **Outils d'extraction multimédia :** Captures d'écran directes via `exec-out screencap` et enregistrements vidéo temporels (`screenrecord`) avec rapatriement automatisé dans les sous-répertoires locaux `./screenshots` et `./videos`.
@@ -18,8 +19,8 @@ Ce logiciel est fourni "en l'état", sans aucune garantie d'aucune sorte. Les op
 Le script a été développé, calibré et validé sur la distribution **Ubuntu** au sein de l'émulateur de terminal standard **GNOME Terminal**.
 
 L'hôte d'exécution doit disposer des paquets suivants :
-* Un environnement système de type GNU/Linux ou macOS.
-* Le paquet **`android-tools-adb`** opérationnel dans les variables d'environnement (`$PATH`).
+* Un environnement système de type GNU/Linux (sous macOS : installer `bash` 4+ et `coreutils` via Homebrew, la commande `timeout` n'étant pas fournie par défaut).
+* Le paquet **`adb`** (Android platform-tools) opérationnel dans les variables d'environnement (`$PATH`).
 * Le paquet **`aapt`** (Android Asset Packaging Tool), requis pour l'analyse des APK et l'extraction de la *Launchable Activity* (Option 12).
 * L'interpréteur **`bash`** en version 4.0 ou supérieure.
 
@@ -33,8 +34,8 @@ sudo apt install adb aapt
 Le déploiement s'effectue via un script automatisé qui installe les dépendances manquantes, configure les droits d'exécution et lie le binaire au répertoire système global.
  1. Cloner le dépôt distant :
 ```bash
-git clone [https://github.com/votre-nom-utilisateur/ADB-PAIR.git](https://github.com/votre-nom-utilisateur/ADB-PAIR.git)
-cd ADB-PAIR
+git clone https://github.com/bey0ne/adb-pair.git
+cd adb-pair
 
 ```
  2. Exécuter le script d'installation avec les privilèges root :
@@ -51,5 +52,9 @@ adb-pair
 ```
 ### Modes de liaison à l'initialisation
  * **[1] USB → Wi-Fi auto :** Requiert l'interconnexion physique initiale. Le script ouvre le port TCP 5555 sur le démon adbd du téléphone, extrait l'adresse IP locale de l'appareil et valide la connexion sans fil. Le câble USB peut être déconnecté dès l'apparition du message de confirmation.
- * **[2] IP directe :** Établit la liaison directe via l'adresse de socket (IP:Port) fournie manuellement si le démon de la cible est déjà configuré en mode d'écoute réseau.
-L'interruption du processus et la fermeture du panneau s'exécutent par les commandes exit ou quit dans le prompt de saisie, ou par l'envoi du signal d'interruption standard Ctrl+C.
+ * **[2] IP directe :** Établit la liaison directe via l'adresse de socket (IP:Port) fournie manuellement si le démon de la cible est déjà configuré en mode d'écoute réseau. Sans port précisé, `5555` est utilisé.
+ * **[3] Appairage (Android 11+) :** Saisir l'IP:Port et le code d'association affichés par *Débogage sans fil > Associer avec un code*, puis l'IP:Port de connexion affiché sur l'écran principal du débogage sans fil.
+
+> ⚠️ Le mode [1] laisse adbd en écoute sur le port TCP 5555 jusqu'au prochain redémarrage du téléphone. Sur un réseau non maîtrisé, redémarrez l'appareil ou exécutez `adb usb` après usage.
+
+Les numéros du menu peuvent être saisis avec ou sans zéro initial (`1` ou `01`). L'interruption du processus et la fermeture du panneau s'exécutent par les commandes exit ou quit dans le prompt de saisie, ou par l'envoi du signal d'interruption standard Ctrl+C.
